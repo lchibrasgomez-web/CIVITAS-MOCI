@@ -15,16 +15,18 @@ class Reporte(BaseModel):
 def clasificar(descripcion: str):
     d = descripcion.lower()
 
-    if "bache" in d or "hoyo" in d:
+    if "bache" in d:
         return "bache"
     elif "basura" in d:
         return "basura"
-    elif "robo" in d or "inseguridad" in d:
+    elif "robo" in d:
         return "seguridad"
-    elif "luz" in d:
-        return "alumbrado"
     else:
         return "otro"
+
+@app.get("/")
+def home():
+    return {"mensaje": "CIVITAS API funcionando"}
 
 @app.get("/reportes")
 def obtener_reportes():
@@ -32,14 +34,12 @@ def obtener_reportes():
 
 @app.post("/reportes")
 def crear_reporte(reporte: Reporte):
-    categoria = clasificar(reporte.descripcion)
-
     nuevo = {
         "descripcion": reporte.descripcion,
         "lat": reporte.lat,
         "lng": reporte.lng,
         "usuario": reporte.usuario,
-        "categoria": categoria,
+        "categoria": clasificar(reporte.descripcion),
         "imagen": reporte.imagen
     }
 
