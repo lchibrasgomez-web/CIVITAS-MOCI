@@ -6,10 +6,11 @@ from typing import Optional
 import shutil
 import os
 import uuid
+import json
 
 app = FastAPI()
 
-# CORS (para que funcione en cualquier red)
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,30 +19,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Carpeta imágenes
+# carpeta imágenes
 if not os.path.exists("imagenes"):
     os.makedirs("imagenes")
 
 app.mount("/imagenes", StaticFiles(directory="imagenes"), name="imagenes")
 
-reportes_db = []
+# archivo base de datos
+DB_FILE = "db.json"
+
+# crear archivo si no existe
+if not os.path.exists(DB_FILE):
+    with open(DB_FILE, "w") as f:
+        json.dump([], f)
+
+# funciones DB
+def leer_db():
+    with open(DB_FILE, "r") as f:
+        return json.load(f)
+
+def guardar_db(data):
+    with open(DB_FILE, "w") as f:
+        json.dump(data, f)
 
 class Reporte(BaseModel):
     descripcion: str
     lat: float
     lng: float
-    tipo: Optional[str] = "Auto"
+    tipo: Optional[str] = "General"
     foto: Optional[str] = None
 
-# 🔥 IA SIMULADA (AUTO CLASIFICACIÓN)
+# IA simple
 def detectar_tipo(descripcion):
     desc = descripcion.lower()
-
     if "bache" in desc or "hoyo" in desc:
         return "Baches"
-    elif "basura" in desc or "sucio" in desc:
+    elif "basura" in desc:
         return "Basura"
-    elif "luz" in desc or "luminaria" in desc:
+    elif "luz" in desc:
         return "Luminaria"
     elif "limpieza" in desc:
         return "Limpieza"
@@ -50,11 +65,11 @@ def detectar_tipo(descripcion):
 
 @app.get("/")
 def home():
-    return {"mensaje": "CIVITAS IA ACTIVADA"}
+    return {"ok": True}
 
 @app.get("/reportes")
 def obtener_reportes():
-    return reportes_db
+    return leer_db()
 
 @app.post("/subir-imagen")
 async def subir_imagen(file: UploadFile = File(...)):
@@ -64,20 +79,20 @@ async def subir_imagen(file: UploadFile = File(...)):
     with open(ruta, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    return {"url": f"https://civitas-moci-production.up.railway.app/imagenes/{nombre}"}
+    return {
+        "url": f"https://civitas-moci-production.up.railway.app/imagenes/{nombre}"
+    }
 
 @app.post("/reportes")
 def crear_reporte(reporte: Reporte):
 
-    # 🔥 IA decide tipo automáticamente
-    tipo_detectado = detectar_tipo(reporte.descripcion)
+    data = leer_db()
 
     nuevo = reporte.dict()
-    nuevo["tipo"] = tipo_detectado
+    nuevo["tipo"] = detectar_tipo(reporte.descripcion)
 
-    reportes_db.append(nuevo)
+    data.append(nuevo)
 
-    return {
-        "ok": True,
-        "tipo_detectado": tipo_detectado
-    }
+    guardar_db(data)
+
+    return {"ok": True}
