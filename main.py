@@ -1,25 +1,56 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
+import shutil
+import os
+import uuid
 
 app = FastAPI()
 
+# PERMITIR CONEXIONES DESDE CUALQUIER LADO
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# CARPETA DE IMÁGENES
+if not os.path.exists("imagenes"):
+    os.makedirs("imagenes")
+
+app.mount("/imagenes", StaticFiles(directory="imagenes"), name="imagenes")
+
+# BASE DE DATOS SIMPLE
 reportes_db = []
 
 class Reporte(BaseModel):
     descripcion: str
     lat: float
     lng: float
+    tipo: str
     foto: Optional[str] = None
-    tipo: Optional[str] = "general"
 
 @app.get("/")
-def root():
-    return {"mensaje": "API funcionando"}
+def home():
+    return {"mensaje": "CIVITAS API ONLINE"}
 
 @app.get("/reportes")
 def obtener_reportes():
     return reportes_db
+
+@app.post("/subir-imagen")
+async def subir_imagen(file: UploadFile = File(...)):
+    nombre = f"{uuid.uuid4()}.jpg"
+    ruta = f"imagenes/{nombre}"
+
+    with open(ruta, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return {"url": f"https://civitas-moci-production.up.railway.app/imagenes/{nombre}"}
 
 @app.post("/reportes")
 def crear_reporte(reporte: Reporte):
