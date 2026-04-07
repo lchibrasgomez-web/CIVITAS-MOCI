@@ -1,8 +1,7 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import json, os, shutil, uuid
+import json, os
 
 app = FastAPI()
 
@@ -14,54 +13,89 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# carpeta imágenes
-if not os.path.exists("imagenes"):
-    os.makedirs("imagenes")
-
-app.mount("/imagenes", StaticFiles(directory="imagenes"), name="imagenes")
-
+USERS = "users.json"
 DB = "db.json"
 
-if not os.path.exists(DB):
-    with open(DB, "w") as f:
-        json.dump([], f)
+# crear archivos si no existen
+for file in [USERS, DB]:
+    if not os.path.exists(file):
+        with open(file, "w") as f:
+            json.dump([], f)
 
-def leer():
-    with open(DB, "r") as f:
+def leer(file):
+    with open(file, "r") as f:
         return json.load(f)
 
-def guardar(data):
-    with open(DB, "w") as f:
+def guardar(file, data):
+    with open(file, "w") as f:
         json.dump(data, f)
+
+# 🔐 MODELOS
+class Usuario(BaseModel):
+    username: str
+    password: str
+    nombre: str = ""
+    telefono: str = ""
 
 class Reporte(BaseModel):
     descripcion: str
     lat: float
     lng: float
-    tipo: str = "General"
-    foto: str = ""
+    user: str
 
-@app.get("/")
-def home():
+# 🔥 REGISTER
+@app.post("/register")
+def register(u: Usuario):
+    users = leer(USERS)
+
+    # evitar duplicados
+    for user in users:
+        if user["username"] == u.username:
+            return {"ok": False, "msg": "Usuario ya existe"}
+
+    nuevo = {
+        "username": u.username.strip(),
+        "password": u.password.strip(),
+        "nombre": u.nombre,
+        "telefono": u.telefono,
+        "admin": u.username.strip().lower() == "admin"
+    }
+
+    users.append(nuevo)
+    guardar(USERS, users)
+
     return {"ok": True}
 
-@app.get("/reportes")
-def get_reportes():
-    return leer()
+# 🔥 LOGIN (CORREGIDO)
+@app.post("/login")
+def login(u: Usuario):
+    users = leer(USERS)
 
-@app.post("/subir-imagen")
-async def subir_imagen(file: UploadFile = File(...)):
-    nombre = f"{uuid.uuid4()}.jpg"
-    ruta = f"imagenes/{nombre}"
+    for user in users:
+        if (
+            user["username"].strip() == u.username.strip()
+            and user["password"].strip() == u.password.strip()
+        ):
+            return {
+                "ok": True,
+                "admin": user.get("admin", False)
+            }
 
-    with open(ruta, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    return {"ok": False}
 
-    return {"url": f"https://civitas-moci-production.up.railway.app/imagenes/{nombre}"}
+# 🔥 REPORTES
+@app.get("/reportes/{user}")
+def get_reportes(user: str):
+    data = leer(DB)
+
+    if user.lower() == "admin":
+        return data
+
+    return [r for r in data if r["user"] == user]
 
 @app.post("/reportes")
 def post_reporte(r: Reporte):
-    data = leer()
+    data = leer(DB)
     data.append(r.dict())
-    guardar(data)
+    guardar(DB, data)
     return {"ok": True}
